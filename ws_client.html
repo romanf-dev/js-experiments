@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="./Chart.js"></script>  
+    <script type="text/javascript">
+      const ws = new WebSocket('ws://localhost:8080');
+      ws.onopen = function() {
+        document.querySelector('#send').disabled = false;
+        document.querySelector('#send').addEventListener('click', function() {
+          ws.send('req');
+        });
+      };
+
+      ws.onmessage = function(msg) {
+        const val = parseInt(msg.data.toString());
+        chart.data.datasets[0].data.push(val);
+
+        if (chart.data.datasets[0].data.length > 10) {
+          chart.data.datasets[0].data.shift();
+        }
+        chart.update();
+      };
+    </script>
+  </head>
+  <body>  
+    <h1>Chart</h1>
+    <div>
+      <button id="send" disabled="true">Get next value from the server</button>
+    </div>
+    <canvas id="myChart" style="width:100%;max-width:1000px"></canvas>
+    <script>
+      var xValues = [1,2,3,4,5,6,7,8,9,10];
+      var yValues = [0];
+      var chart = new Chart("myChart", {
+        type: "line",
+        data: {
+          labels: xValues,
+          datasets: [{
+            fill: false,
+            lineTension: 0,
+            backgroundColor: "rgba(0,0,255,1.0)",
+            borderColor: "rgba(0,0,255,0.1)",
+            data: yValues
+          }]
+        },
+        options: {
+          legend: {display: false},
+          scales: {
+            yAxes: [{ticks: {min: 0, max:10}}],
+          },
+          animation: false
+        }
+      });     
+    </script>     
+  </body>
+</html>

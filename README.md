@@ -28,3 +28,8 @@ Official wikipedia app for iPhone/iPad does not support night mode, it is my att
 
 Now you can use the shortcut on Wikipedia pages to switch the page to night mode (gray background, white text).
 
+ws_client/server
+----------------
+
+Websocket example: client requests data from the server then draws received value on a chart.
+No error handling is performed, this is just an example.
