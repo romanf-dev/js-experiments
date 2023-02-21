@@ -29,6 +29,44 @@ const http = require('http');
     const parser = new DelimiterParser({ delimiter: '\r\n' });
     port.pipe(parser);
 
+    const defaultErrorFunc = (err) => {
+        console.log(err);
+        throw new Error(err);
+    }
+
+    port.recvBuffer = new Buffer.alloc(50);
+    port.recvPosition = 0;
+    port.onError = defaultErrorFunc;
+
+    const defaultDataRecvFunc = (data) => {
+        console.log('Unexpected data recevied on serial port');
+        const writeIsInProgress = port.onError != defaultErrorFunc;
+
+        if (writeIsInProgress) {
+            port.onError(new Error('Unexpected response after write'));
+            port.onError = defaultErrorFunc;                
+        }
+    }
+
+    port.onData = defaultDataRecvFunc;
+
+    port.on('error', (err) => { 
+        port.onError(err);
+        port.onError = defaultErrorFunc;
+    });
+
+    port.on('data', (data) => {
+        data.copy(port.recvBuffer, port.recvPosition);
+        port.recvPosition += data.length;
+
+        if (data[data.length - 1] == 10) {
+            port.recvBuffer[port.recvPosition] = 0;
+            port.recvPosition = 0;
+            port.onData(port.recvBuffer);
+            port.onData = defaultDataRecvFunc;
+        }
+    });
+
     class RCC {
       constructor(baseaddr) {
         this.apbenr = baseaddr + 0x14;
@@ -60,20 +98,25 @@ const http = require('http');
     }
 
     function response(req) {
-        return new Promise((resolve, reject) => {
-            parser.removeAllListeners('data');
-            parser.on('data', (data) => { 
-                resolve(data); 
-            });
+        return new Promise((resolve, reject) => {         
+            port.onData = resolve;
+            port.onError = reject;
             port.write(req);
+        }).catch((err) => {
+            port.close();
+            throw new Error('Error on read');
         });
     }
 
     function write(addr, data) {
         return new Promise((resolve, reject) => {
             const req = util.format('a %s v %s\n', addr.toString(16), data.toString(16));
-            port.write(req);
+            port.onError = reject;
             port.drain(() => resolve());
+            port.write(req);
+        }).catch( (err) => {
+            port.close();
+            throw new Error('Error on write');
         });
     }
 
@@ -184,4 +227,5 @@ const http = require('http');
 })().catch(err => { 
     console.log('Something goes wrong :(');
     console.log(err);
+    process.exit(1);
 });
