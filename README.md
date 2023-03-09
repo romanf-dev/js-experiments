@@ -18,6 +18,11 @@ Example:
     node sensor.js /dev/ttyACM0
 
 
+i2c.js
+------
+
+Example of temperature sensor reading on MPU-6050 device using NodeJS.
+
 wiki-nightmode.js
 -----------------
 
