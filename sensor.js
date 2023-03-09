@@ -11,7 +11,6 @@
 //
 
 const { SerialPort } = require('serialport');
-const { DelimiterParser } = require('@serialport/parser-delimiter');
 const util = require('util'); 
 const http = require('http');
 
@@ -26,28 +25,14 @@ const http = require('http');
     }
 
     const port = new SerialPort({ path: process.argv[2], baudRate: 9600, });
-    const parser = new DelimiterParser({ delimiter: '\r\n' });
-    port.pipe(parser);
-
-    const defaultErrorFunc = (err) => {
-        console.log(err);
-        throw new Error(err);
-    }
-
-    port.recvBuffer = new Buffer.alloc(50);
-    port.recvPosition = 0;
-    port.onError = defaultErrorFunc;
-
+    const defaultErrorFunc = (err) => { throw new Error(err); }
     const defaultDataRecvFunc = (data) => {
         console.log('Unexpected data recevied on serial port');
-        const writeIsInProgress = port.onError != defaultErrorFunc;
-
-        if (writeIsInProgress) {
-            port.onError(new Error('Unexpected response after write'));
-            port.onError = defaultErrorFunc;                
-        }
     }
 
+    port.recvBuffer = new Buffer.alloc(100);
+    port.recvPosition = 0;
+    port.onError = defaultErrorFunc;
     port.onData = defaultDataRecvFunc;
 
     port.on('error', (err) => { 
@@ -59,8 +44,7 @@ const http = require('http');
         data.copy(port.recvBuffer, port.recvPosition);
         port.recvPosition += data.length;
 
-        if (data[data.length - 1] == 10) {
-            port.recvBuffer[port.recvPosition] = 0;
+        if (data[data.length - 1] == 0) {
             port.recvPosition = 0;
             port.onData(port.recvBuffer);
             port.onData = defaultDataRecvFunc;
@@ -104,26 +88,24 @@ const http = require('http');
             port.write(req);
         }).catch((err) => {
             port.close();
-            throw new Error('Error on read');
+            throw new Error('Port error');
         });
     }
 
-    function write(addr, data) {
-        return new Promise((resolve, reject) => {
-            const req = util.format('a %s v %s\n', addr.toString(16), data.toString(16));
-            port.onError = reject;
-            port.drain(() => resolve());
-            port.write(req);
-        }).catch( (err) => {
-            port.close();
-            throw new Error('Error on write');
-        });
+    async function write(addr, data) {
+        const req = util.format('w %s %s\n', addr.toString(16), data.toString(16));
+        await response(req);
     }
 
     async function read(addr) {
-        const req = util.format('a %s\n', addr.toString(16));
+        const req = util.format('r %s\n', addr.toString(16));
         const str = await response(req);
         const num = parseInt(str, 16);
+
+        if (isNaN(num)) {
+            throw new Error('Response parser error');
+        }
+
         return num;
     }
 
@@ -137,7 +119,7 @@ const http = require('http');
         await write(addr, value & ~bits);        
     }
 
-    const fw_id = await response('t\n');
+    const fw_id = await response('i\n');
     console.log(fw_id.toString());
 
     //
@@ -179,7 +161,7 @@ const http = require('http');
 
     //
     // Read data from sensor to memory location using DMA.
-    // Tje address is chosen based on memory layout of the MCU.
+    // The address is chosen based on memory layout of the MCU.
     //
     await bit_set(rcc.apbenr, 1);
     await bit_clear(dma1_chan1.ccr, (1 << 4));
@@ -209,21 +191,23 @@ const http = require('http');
             base_temp = temp;
         }
 
-        rel_temp = (temp - base_temp);
+        rel_temp = (temp - base_temp).toFixed(2);
         console.log('temp: ', rel_temp);
     }, 1000);
 
     const server = http.createServer((req, res) => {
         res.statusCode = 200;
-        res.setHeader('Content-Type', 'text/plain');
-        res.end(rel_temp.toString());
+        res.setHeader('Content-Type', 'text/json');
+        const data = { 'temperature': rel_temp };
+        const json = JSON.stringify(data);
+        res.end(json);
         console.log('Http request received');
     });
 
     server.listen(serv_port, host, () => {
        console.log('Server is running...'); 
     });
-    
+
 })().catch(err => { 
     console.log('Something goes wrong :(');
     console.log(err);
