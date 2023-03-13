@@ -86,11 +86,7 @@ const util = require('util');
     async function bit_clear(addr, bits) {
         const value = await read(addr);
         await write(addr, value & ~bits);        
-    }
-
-    function delay(time) {
-        return new Promise(resolve => setTimeout(resolve, time));
-    }     
+    }   
 
     function widthModifier(size) {
         let modifier = '';
@@ -167,44 +163,15 @@ const util = require('util');
 
             const arr = this.chain.slice(0, this.index);
             const str = arr.join('|') + '\n';
-            const len = str.length;
-            const size = 50;
-            const chunks = Math.ceil(len / size);
-
-            let cache = []
-
-            for (let i = 0; i < chunks; ++i) {
-                const part = str.slice(i * size, (i + 1) * size);
-                cache.push(part);
-            }
-
-            return cache;
+            return str;
         }
 
-        //
-        // Send batch by chunks to avoid MCU buffer overflows when USB packet
-        // memory is not double buffered.
-        //
         async run() {
             if (this.cache == undefined) {
                 this.cache = this.get();
             }
 
-            const request = this.cache;          
-            let resp = '';
-    
-            for (let i = 0; i < request.length; ++i) {
-                const last = (i === (request.length - 1));
-                const part = request[i];
-
-                if (last) {
-                    resp = await response(part);
-                } else {
-                    port.write(part);
-                    await delay(10);
-                }
-            }
-    
+            const resp = await response(this.cache);  
             const result = resp.toString().split('|').map((x) => { 
                 return parseInt(x, 16) 
             });
@@ -293,7 +260,7 @@ const util = require('util');
     //
     const fw_id = await response('i\n');
 
-    await bit_set(rcc.cfgr, 6 << 8);            // PCLK1 = 9MHz
+    await bit_set(rcc.cfgr, 4 << 8);            // PCLK1 = 36MHz
     await bit_set(rcc.apb1enr, 1 << 21);        // Enable I2C1
     await bit_set(rcc.apb2enr, 1 << 3);         // Enable IOPB
 
@@ -302,9 +269,9 @@ const util = require('util');
     await write(i2c1.cr1, 0);                   // Disable I2C
     await bit_set(i2c1.cr1, 1 << 15);           // Set SWRST
     await bit_clear(i2c1.cr1, 1 << 15);         // Clear SWRST
-    await write(i2c1.ccr, 45);                  // Th = Tl = 45 * Tpclk = 5us
-    await write(i2c1.trise, 10);                // (1000us / Tpclk) + 1 = 10
-    await bit_set(i2c1.cr2, 9);                 // PCLK1
+    await write(i2c1.ccr, 178);                 // Th = Tl = 178 * Tpclk = 5us
+    await write(i2c1.trise, 36);                // (1000us / Tpclk) + 1 = 36
+    await bit_set(i2c1.cr2, 36);                // PCLK1
     await bit_set(i2c1.cr1, 1);                 // Enable I2C, Standard mode
     const cr1 = await read(i2c1.cr1);
 
@@ -321,14 +288,14 @@ const util = require('util');
     console.log('device id = ', id);
 
     if (id != 104) {
-        console.log('Wrong sensor ID');
+        console.log('Wrong sensor ID', id);
         process.exit(1);
     }
 
     //
     // Wakeup device.
     // 
-    await getWriteProc(0x68, 0x6b, 0x00).run();
+    await getWriteProc(0x68, 0x6b, 0).run();
 
     //
     // Get batch command to read register 0x41. The register hold higher part
