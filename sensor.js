@@ -109,18 +109,18 @@ const http = require('http');
         return num;
     }
 
-    async function bit_set(addr, bits) {
+    async function bitSet(addr, bits) {
         const value = await read(addr);
         await write(addr, value | bits);
     }
 
-    async function bit_clear(addr, bits) {
+    async function bitClear(addr, bits) {
         const value = await read(addr);
         await write(addr, value & ~bits);        
     }
 
-    const fw_id = await response('i\n');
-    console.log(fw_id.toString());
+    const fwId = await response('i\n');
+    console.log(fwId.toString());
 
     //
     // E000ED00 is an architecturally defined address for CPU identification.
@@ -136,8 +136,8 @@ const http = require('http');
     //
     // Enable clocks for ADC and GPIO.
     //
-    await bit_set(rcc.apb2enr, (1 << 9) | (1 << 2));
-    await bit_set(rcc.cfgr, (2 << 14));
+    await bitSet(rcc.apb2enr, (1 << 9) | (1 << 2));
+    await bitSet(rcc.cfgr, (2 << 14));
 
     //
     // Configure ADC1 to read data from internal sensor.
@@ -145,60 +145,60 @@ const http = require('http');
     //
     await write(adc1.cr1, 1 << 8);
     await write(adc1.cr2, 1 << 1);  
-    await bit_set(adc1.cr2, (7 << 17));
-    await bit_clear(adc1.cr2, (1 << 11));
-    await bit_clear(adc1.smpr2, (7 << 3) | (7 << 12));
-    await bit_set(adc1.sqr1, (2 << 20));
-    await bit_clear(gpioa, (0xf << 4));
-    await bit_clear(gpioa, (0xf << 16));
-    await bit_set(adc1.smpr1, (7 << 18));
-    await bit_set(adc1.cr2, (1 << 23));
-    await bit_set(adc1.cr2, (1 << 8));
-    await bit_set(adc1.sqr3, 1);
-    await bit_set(adc1.sqr3, 4 << 5);
-    await bit_set(adc1.sqr3, 16 << 10);
-    await bit_set(adc1.cr2, 1);
+    await bitSet(adc1.cr2, (7 << 17));
+    await bitClear(adc1.cr2, (1 << 11));
+    await bitClear(adc1.smpr2, (7 << 3) | (7 << 12));
+    await bitSet(adc1.sqr1, (2 << 20));
+    await bitClear(gpioa, (0xf << 4));
+    await bitClear(gpioa, (0xf << 16));
+    await bitSet(adc1.smpr1, (7 << 18));
+    await bitSet(adc1.cr2, (1 << 23));
+    await bitSet(adc1.cr2, (1 << 8));
+    await bitSet(adc1.sqr3, 1);
+    await bitSet(adc1.sqr3, 4 << 5);
+    await bitSet(adc1.sqr3, 16 << 10);
+    await bitSet(adc1.cr2, 1);
 
     //
     // Read data from sensor to memory location using DMA.
     // The address is chosen based on memory layout of the MCU.
     //
-    await bit_set(rcc.apbenr, 1);
-    await bit_clear(dma1_chan1.ccr, (1 << 4));
-    await bit_set(dma1_chan1.ccr, (1 << 5));
-    await bit_set(dma1_chan1.ccr, (1 << 7));
-    await bit_set(dma1_chan1.ccr, (1 << 8));
-    await bit_set(dma1_chan1.ccr, (1 << 10));   
+    await bitSet(rcc.apbenr, 1);
+    await bitClear(dma1_chan1.ccr, (1 << 4));
+    await bitSet(dma1_chan1.ccr, (1 << 5));
+    await bitSet(dma1_chan1.ccr, (1 << 7));
+    await bitSet(dma1_chan1.ccr, (1 << 8));
+    await bitSet(dma1_chan1.ccr, (1 << 10));   
 
     await write(dma1_chan1.cndtr, 3);
     await write(dma1_chan1.cpar, adc1.data);
     await write(dma1_chan1.cmar, 0x20004FF0);
-    await bit_set(dma1_chan1.ccr, 1);
+    await bitSet(dma1_chan1.ccr, 1);
     
     await write(adc1.sr, 0);
-    await bit_set(adc1.cr2, (1 << 20));
-    await bit_set(adc1.cr2, (1 << 22));   
+    await bitSet(adc1.cr2, (1 << 20));
+    await bitSet(adc1.cr2, (1 << 22));   
 
-    let base_temp = null;
-    let rel_temp = null;
+    let baseTemp = null;
+    let relTemp = null;
 
     setInterval( async () => {
         const val = await read(0x20004FF4) & 0xffff;    
         const temp = ((1.43 - ((3.3 * val) / 4095)) / 0.0043) + 25;
 
-        if (base_temp == null)
+        if (baseTemp == null)
         {
-            base_temp = temp;
+            baseTemp = temp;
         }
 
-        rel_temp = (temp - base_temp).toFixed(2);
-        console.log('temp: ', rel_temp);
+        relTemp = (temp - baseTemp).toFixed(2);
+        console.log('temp: ', relTemp);
     }, 1000);
 
     const server = http.createServer((req, res) => {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/json');
-        const data = { 'temperature': rel_temp };
+        const data = { 'temperature': relTemp };
         const json = JSON.stringify(data);
         res.end(json);
         console.log('Http request received');

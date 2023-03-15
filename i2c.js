@@ -78,12 +78,12 @@ const util = require('util');
         return num;
     }
 
-    async function bit_set(addr, bits) {
+    async function bitSet(addr, bits) {
         const value = await read(addr);
         await write(addr, value | bits);
     }
 
-    async function bit_clear(addr, bits) {
+    async function bitClear(addr, bits) {
         const value = await read(addr);
         await write(addr, value & ~bits);        
     }   
@@ -260,19 +260,19 @@ const util = require('util');
     //
     const fw_id = await response('i\n');
 
-    await bit_set(rcc.cfgr, 4 << 8);            // PCLK1 = 36MHz
-    await bit_set(rcc.apb1enr, 1 << 21);        // Enable I2C1
-    await bit_set(rcc.apb2enr, 1 << 3);         // Enable IOPB
+    await bitSet(rcc.cfgr, 4 << 8);            // PCLK1 = 36MHz
+    await bitSet(rcc.apb1enr, 1 << 21);        // Enable I2C1
+    await bitSet(rcc.apb2enr, 1 << 3);         // Enable IOPB
 
-    await bit_set(gpiob, 1 << 24 | 1 << 28 | 3 << 26 | 3 << 30);
+    await bitSet(gpiob, 1 << 24 | 1 << 28 | 3 << 26 | 3 << 30);
 
     await write(i2c1.cr1, 0);                   // Disable I2C
-    await bit_set(i2c1.cr1, 1 << 15);           // Set SWRST
-    await bit_clear(i2c1.cr1, 1 << 15);         // Clear SWRST
+    await bitSet(i2c1.cr1, 1 << 15);           // Set SWRST
+    await bitClear(i2c1.cr1, 1 << 15);         // Clear SWRST
     await write(i2c1.ccr, 178);                 // Th = Tl = 178 * Tpclk = 5us
     await write(i2c1.trise, 36);                // (1000us / Tpclk) + 1 = 36
-    await bit_set(i2c1.cr2, 36);                // PCLK1
-    await bit_set(i2c1.cr1, 1);                 // Enable I2C, Standard mode
+    await bitSet(i2c1.cr2, 36);                // PCLK1
+    await bitSet(i2c1.cr1, 1);                 // Enable I2C, Standard mode
     const cr1 = await read(i2c1.cr1);
 
     //
