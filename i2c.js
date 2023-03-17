@@ -118,11 +118,11 @@ const util = require('util');
         }
 
         wait(addr, bit, value, width) {
-            const w = widthModifier(width);
             const wait_id = ((value & 1) << 5) | (bit & 0x1f);
             const cmd = util.format(
                 'u%s %s %s', 
-                w, addr.toString(16), 
+                widthModifier(width), 
+                addr.toString(16), 
                 wait_id.toString(16)
             );
             this.chain[this.index++] = cmd;
@@ -130,17 +130,20 @@ const util = require('util');
         }
 
         read(addr, width) {
-            const w = widthModifier(width);
-            const cmd = util.format('r%s %s', w, addr.toString(16));
+            const cmd = util.format(
+                'r%s %s', 
+                widthModifier(width), 
+                addr.toString(16)
+            );
             this.chain[this.index++] = cmd;
             return this;
         }
 
         write(addr, value, width) {
-            const w = widthModifier(width);
             const cmd = util.format(
                 'w%s %s %s', 
-                w, addr.toString(16), 
+                widthModifier(width), 
+                addr.toString(16), 
                 value.toString(16)
             );
             this.chain[this.index++] = cmd;
@@ -161,9 +164,7 @@ const util = require('util');
                 throw new Error('Empty batch');
             }
 
-            const arr = this.chain.slice(0, this.index);
-            const str = arr.join('|') + '\n';
-            return str;
+            return this.chain.slice(0, this.index).join('|') + '\n';
         }
 
         async run() {
@@ -203,51 +204,60 @@ const util = require('util');
             this.ccr = baseaddr + 0x1c;
             this.trise = baseaddr + 0x20;
         }
-    }
+        
+        async setup(ccr, trise, pclk) {
+            await write(i2c1.cr1, 0);
+            await bitSet(i2c1.cr1, 1 << 15);
+            await bitClear(i2c1.cr1, 1 << 15);
+            await write(i2c1.ccr, ccr);
+            await write(i2c1.trise, trise);
+            await bitSet(i2c1.cr2, pclk);
+            await bitSet(i2c1.cr1, 1);
+        }
 
-    function getReadProc(deviceId, reg) {
-        const addr = deviceId << 1;
-        const batch = new Batch()
-            .write(i2c1.cr1, cr1 | 1 << 8)      // Generate START
-            .wait(i2c1.sr1, 0, 1)               // Wait for SB bit to be set
-            .write(i2c1.dr, addr)               // Send slave address
-            .wait(i2c1.sr1, 1, 1)               // Wait for ADDR
-            .read(i2c1.sr1)                     // Read SR1
-            .read(i2c1.sr2)                     // Read SR2 to clear ACK
-            .wait(i2c1.sr1, 7, 1)               // Wait for TxE
-            .write(i2c1.dr, reg)                // Send slave register id
-            .wait(i2c1.sr1, 7, 1)               // Wait for TxE
-            .write(i2c1.cr1, cr1 | 1 << 8)      // Generate RESTART
-            .wait(i2c1.sr1, 0, 1)               // Wait for SB
-            .write(i2c1.dr, addr | 1)           // Send read command
-            .wait(i2c1.sr1, 1, 1)               // Wait for ADDR
-            .write(i2c1.cr1, cr1)               // Clear any bits except PE
-            .read(i2c1.sr1)                     // Read SR1
-            .read(i2c1.sr2)                     // and SR2 to clear status bits
-            .write(i2c1.cr1, cr1 | 1 << 9)      // Generate STOP
-            .wait(i2c1.sr1, 6, 1)               // Wait for RxNE
-            .read(i2c1.dr).setAsResult()        // Read DR (set as batch result)
-            .write(i2c1.cr1, cr1 | 1 << 9)      // Generate STOP
+        getReadProc(deviceId, reg) {
+            const addr = deviceId << 1;
+            const batch = new Batch()
+                .write(this.cr1, (1 << 8) | 1)      // Generate START
+                .wait(this.sr1, 0, 1)               // Wait for SB bit to be set
+                .write(this.dr, addr)               // Send slave address
+                .wait(this.sr1, 1, 1)               // Wait for ADDR
+                .read(this.sr2)                     // Read SR2 to clear ACK
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.dr, reg)                // Send slave register id
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.cr1, (1 << 8) | 1)      // Generate RESTART
+                .wait(this.sr1, 0, 1)               // Wait for SB
+                .write(this.dr, addr | 1)           // Send read command
+                .wait(this.sr1, 1, 1)               // Wait for ADDR
+                .write(this.cr1, 1)                 // Clear any bits except PE
+                .read(this.sr1)                     // Read SR1
+                .read(this.sr2)                     // and SR2 to clear status bits
+                .write(this.cr1, (1 << 9) | 1)      // Generate STOP
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()        // Read DR (set as batch result)
+                .write(this.cr1, (1 << 9) | 1)      // Generate STOP
 
             return batch;
-    }    
+        }
 
-    function getWriteProc(deviceId, reg, val) {
-        const batch = new Batch()
-            .write(i2c1.cr1, cr1 | 1 << 8)      // Generate START
-            .wait(i2c1.sr1, 0, 1)               // Wait for SB
-            .write(i2c1.dr, deviceId << 1)      // Send slave address
-            .wait(i2c1.sr1, 1, 1)               // Wait for ADDR bit
-            .read(i2c1.sr1)                     // Read status registers
-            .read(i2c1.sr2)                     // to clear any status bits
-            .wait(i2c1.sr1, 7, 1)               // Wait for TxE
-            .write(i2c1.dr, reg)                // Send register id
-            .wait(i2c1.sr1, 7, 1)               // Wait for TxE
-            .write(i2c1.dr, val)                // Send register value
-            .wait(i2c1.sr1, 7, 1)               // Wait until sent
-            .write(i2c1.cr1, cr1 | 1 << 9)      // Generate STOP
+        getWriteProc(deviceId, reg, val) {
+            const batch = new Batch()
+                .write(this.cr1, (1 << 8) | 1)      // Generate START
+                .wait(this.sr1, 0, 1)               // Wait for SB
+                .write(this.dr, deviceId << 1)      // Send slave address
+                .wait(this.sr1, 1, 1)               // Wait for ADDR bit
+                .read(this.sr1)                     // Read status registers
+                .read(this.sr2)                     // to clear any status bits
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.dr, reg)                // Send register id
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.dr, val)                // Send register value
+                .wait(this.sr1, 7, 1)               // Wait until sent
+                .write(this.cr1, (1 << 9) | 1)      // Generate STOP
 
-        return batch;
+            return batch;
+        }
     }
 
     const i2c1 = new I2C(0x40005400);
@@ -258,22 +268,7 @@ const util = require('util');
     // Get MCU id. It may respond with #ERROR first time in case when the host 
     // tried to talk to the device using AT commands. This is OK.
     //
-    const fw_id = await response('i\n');
-
-    await bitSet(rcc.cfgr, 4 << 8);            // PCLK1 = 36MHz
-    await bitSet(rcc.apb1enr, 1 << 21);        // Enable I2C1
-    await bitSet(rcc.apb2enr, 1 << 3);         // Enable IOPB
-
-    await bitSet(gpiob, 1 << 24 | 1 << 28 | 3 << 26 | 3 << 30);
-
-    await write(i2c1.cr1, 0);                   // Disable I2C
-    await bitSet(i2c1.cr1, 1 << 15);           // Set SWRST
-    await bitClear(i2c1.cr1, 1 << 15);         // Clear SWRST
-    await write(i2c1.ccr, 178);                 // Th = Tl = 178 * Tpclk = 5us
-    await write(i2c1.trise, 36);                // (1000us / Tpclk) + 1 = 36
-    await bitSet(i2c1.cr2, 36);                // PCLK1
-    await bitSet(i2c1.cr1, 1);                 // Enable I2C, Standard mode
-    const cr1 = await read(i2c1.cr1);
+    const fwId = await response('i\n');
 
     //
     // E000ED00 is an architecturally defined address for CPU identification.
@@ -282,9 +277,28 @@ const util = require('util');
     console.log('CPUID: ', cpuid.toString(16));
 
     //
+    // Enable I2C & IOPB, PCLK1 = 36MHz.
+    //
+    await bitSet(rcc.cfgr, 4 << 8);
+    await bitSet(rcc.apb1enr, 1 << 21);
+    await bitSet(rcc.apb2enr, 1 << 3);
+
+    //
+    // Set PB6/PB7 as Hispeed, open-drain, alternate function.
+    //
+    await bitSet(gpiob, 1 << 24 | 1 << 28 | 3 << 26 | 3 << 30);
+
+    //
+    // trise = (1000us / Tpclk) + 1 = 36
+    // CCR = Th = Tl = 178 * Tpclk = 5us
+    // PCLK1 = 36
+    //
+    await i2c1.setup(178, 36, 36);
+
+    //
     // Read device ID (whoami register at 0x75). It should be 0x68.
     //
-    const id = await getReadProc(0x68, 0x75).run();
+    const id = await i2c1.getReadProc(0x68, 0x75).run();
     console.log('device id = ', id);
 
     if (id != 104) {
@@ -295,7 +309,7 @@ const util = require('util');
     //
     // Wakeup device.
     // 
-    await getWriteProc(0x68, 0x6b, 0).run();
+    await i2c1.getWriteProc(0x68, 0x6b, 0).run();
 
     //
     // Get batch command to read register 0x41. The register hold higher part
@@ -303,7 +317,7 @@ const util = require('util');
     // the data (less than 1 degree) it may be ignored since high accuracy is
     // not required.
     //
-    const getTemperature = getReadProc(0x68, 0x41);
+    const getTemperature = i2c1.getReadProc(0x68, 0x41);
     
     async function readSensor() {
         const raw = await getTemperature.run();
