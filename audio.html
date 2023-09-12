@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  </head>
+  <body>  
+    <h1>Chart</h1>
+    <div>
+      <button id="send">Play</button>
+    </div>   
+    <script type="text/javascript">
+
+        const audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+
+        async function delay(timeout) {
+            return new Promise((resolve, reject) => {
+                setTimeout(resolve, timeout);
+            });
+        }
+
+        async function playNote(frequency, duration) {
+            if (frequency != 0) {
+                const oscillator = audioCtx.createOscillator();
+
+                oscillator.type = 'square';
+                oscillator.frequency.value = frequency;
+                oscillator.connect(audioCtx.destination);
+                oscillator.start();
+                await delay(duration);
+                oscillator.stop();
+            } else {
+                await delay(duration);
+            }
+        }
+
+        const notes = [
+            [349, 4], 
+            [329, 4], 
+            [293, 4], 
+            [261, 4], [0, 16],
+            [392, 2], [0, 16],
+            [392, 2], 
+
+            [0, 4],
+
+            [349, 4], 
+            [329, 4], 
+            [293, 4], 
+            [261, 4], [0, 16],
+            [392, 2], [0, 16],
+            [392, 2], 
+
+            [0, 4],
+
+            [349, 4], [0, 16],
+            [440, 4], [0, 16],
+            [440, 4],
+            [349, 4],
+            [329, 4], [0, 16],
+            [392, 4], [0, 16],
+            [392, 4], 
+            [329, 4],
+
+            [293, 4],
+            [329, 4],
+            [349, 4],
+            [293, 4], [0, 16],
+            [261, 2], [0, 16],
+            [261, 2],
+
+            [349, 4], [0, 16],
+            [440, 4], [0, 16],
+            [440, 4],
+            [349, 4],
+            [329, 4], [0, 16],
+            [392, 4], [0, 16],
+            [392, 4], 
+            [329, 4],
+
+            [293, 4],
+            [329, 4],
+            [349, 4],
+            [293, 4], [0, 16],
+            [261, 2], [0, 16],
+            [261, 2],
+        ];
+
+        tempo = 200;
+
+        async function playMelody() {
+            for (let i = 0; i < notes.length; i++) {
+                note = notes[i];
+                await playNote(note[0], 1000 * 256 / (note[1] * tempo));
+            }
+        }
+
+        document.querySelector('#send').addEventListener('click', playMelody);
+    </script>
+  </body>
+</html>

@@ -113,7 +113,7 @@ const util = require('util');
         constructor() {
             this.chain = new Array(50);
             this.index = 0;
-            this.resultCommand = undefined;
+            this.resultCommand = [];
             this.cache = undefined;
         }
 
@@ -151,11 +151,7 @@ const util = require('util');
         }
 
         setAsResult() {
-            if (this.resultCommand == undefined) {
-                this.resultCommand = this.index - 1;
-            } else {
-                throw new Error('Result is already set');
-            }
+            this.resultCommand.push(this.index - 1);
             return this;
         }
 
@@ -177,9 +173,11 @@ const util = require('util');
                 return parseInt(x, 16) 
             });
 
-            return (this.resultCommand != undefined) ? 
-                result[this.resultCommand] : 
-                result;
+            const translated = this.resultCommand.map((x) => {
+                return result[x];
+            });
+
+            return translated.length == 1 ? translated[0] : translated;
         }         
     }
 
@@ -236,6 +234,43 @@ const util = require('util');
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
                 .wait(this.sr1, 6, 1)               // Wait for RxNE
                 .read(this.dr).setAsResult()        // Read DR (set as batch result)
+                .write(this.cr1, (1 << 9) | 1)      // Generate STOP
+
+            return batch;
+        }
+
+        getReadProc6(deviceId, reg) {
+            const addr = deviceId << 1;
+            const batch = new Batch()
+                .write(this.cr1, (1 << 8) | 1)      // Generate START
+                .wait(this.sr1, 0, 1)               // Wait for SB bit to be set
+                .write(this.dr, addr)               // Send slave address
+                .wait(this.sr1, 1, 1)               // Wait for ADDR
+                .read(this.sr2)                     // Read SR2 to clear ACK
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.dr, reg)                // Send slave register id
+                .wait(this.sr1, 7, 1)               // Wait for TxE
+                .write(this.cr1, (1 << 8) | 1)      // Generate RESTART
+                .wait(this.sr1, 0, 1)               // Wait for SB
+                .write(this.dr, addr | 1)           // Send read command
+                .wait(this.sr1, 1, 1)               // Wait for ADDR
+                .read(this.sr1)                     // Read SR1
+                .read(this.sr2)                     // and SR2 to clear status bits
+                .write(this.cr1, (1 << 10) | 1)     // Set ACK
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()        // Read DR (set as batch result)
+                .write(this.cr1, 1)                 // Clear ACK
+                .write(this.cr1, (1 << 9) | 1)      // Generate STOP
+                .wait(this.sr1, 6, 1)               // Wait for RxNE
+                .read(this.dr).setAsResult()        // Read last byte
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
 
             return batch;
@@ -311,6 +346,24 @@ const util = require('util');
     // 
     await i2c1.getWriteProc(0x68, 0x6b, 0).run();
 
+    await i2c1.getWriteProc(0x53, 0x2d, 8).run();
+
+    const d = i2c1.getReadProc6(0x68, 0x43);
+
+    const m = i2c1.getReadProc6(0x53, 0x32);
+
+    const conv2 = (hi, lo) => {
+        const word = (hi << 8) | lo;
+        const abs = (word << 16) >> 16;
+        return abs;
+    }
+
+    const conv = (lo, hi) => {
+        const word = (hi << 8) | lo;
+        const abs = (word << 16) >> 16;
+        return abs;
+    }
+
     //
     // Get batch command to read register 0x41. The register hold higher part
     // of 2-byte temperature data. Since low part holds only 256/340th part of
@@ -319,11 +372,25 @@ const util = require('util');
     //
     const getTemperature = i2c1.getReadProc(0x68, 0x41);
     
+    /*
     async function readSensor() {
         const raw = await getTemperature.run();
         const t = ((((raw << 24) >> 24) * 256) / 340) + 36.5;
         console.log('t = ', t.toFixed(2));
         setTimeout(readSensor, 1000);
+    }
+    */
+
+   async function readSensor() {
+        const raw = await m.run();
+        const rrr = await d.run();
+        const x = conv(raw[0], raw[1]) / 256;
+        const y = conv(raw[2], raw[3]) / 256;
+        const z = conv(raw[4], raw[5]) / 256;
+        const a = Math.sqrt((x*x + y*y + z*z));
+        console.log('acc = ', a.toFixed(3));
+        console.log('gyro = %d %d %d', conv2(rrr[0], rrr[1]), conv2(rrr[2], rrr[3]), conv2(rrr[4], rrr[5]))
+        setTimeout(readSensor, 500);
     }
 
     readSensor();
