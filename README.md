@@ -21,7 +21,7 @@ Example:
 i2c.js
 ------
 
-Example of temperature sensor reading on MPU-6050 device using NodeJS.
+Reading data from two sensors (MPU-6050 and ADXL345) connected to the same I2C bus.
 
 wiki-nightmode.js
 -----------------

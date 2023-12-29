@@ -1,10 +1,13 @@
 //
 // Example project for MCU_keyhole + NodeJS.
 //
-// It reads temperature data from MPU-6050 sensor connected via I2C interface to 
-// STM32 Bluepill board.
-// MPU 6050 is connected to I2C1: pin PB6 to SCL, pin PB7 to SDA with pull-up
-// 10k resistors. AD0 -> GND on the sensor, thus addr = 0x68.
+// It reads data from two sensors MPU-6050 and ADXL345 with both connected
+// via the same I2C1 interface of STM32 Bluepill board.
+// Gyroscope data are read from MPU-6050, 
+// acceleration data are read from ADXL345.
+// I2C bus uses pin PB6 as SCL, pin PB7 as SDA with pull-up 10k resistors.
+// MPU-6050 has AD0 -> GND, thus its I2C addr = 0x68.
+// ADXL345 has addr 0x53.
 // Run as: node i2c.js <path to serial device>
 // Example: node i2c.js /dev/ttyACM0
 //
@@ -64,6 +67,7 @@ const util = require('util');
             addr.toString(16), 
             (data >>> 0).toString(16)
         );
+
         await response(req);
     }
 
@@ -75,6 +79,7 @@ const util = require('util');
         if (isNaN(num)) {
             throw new Error('Response parser error');
         }
+
         return num;
     }
 
@@ -90,6 +95,7 @@ const util = require('util');
 
     function widthModifier(size) {
         let modifier = '';
+
         if (size != undefined) {
             const map = { 1: 'b', 2: 'w', 4: 'd' };
             modifier = map[size];
@@ -97,6 +103,7 @@ const util = require('util');
                 throw new Error('Unknown width modifier')
             }
         }
+
         return modifier;
     }
 
@@ -135,6 +142,7 @@ const util = require('util');
                 widthModifier(width), 
                 addr.toString(16)
             );
+
             this.chain[this.index++] = cmd;
             return this;
         }
@@ -146,6 +154,7 @@ const util = require('util');
                 addr.toString(16), 
                 value.toString(16)
             );
+
             this.chain[this.index++] = cmd;
             return this;
         }
@@ -342,21 +351,24 @@ const util = require('util');
     }
 
     //
-    // Wakeup device.
+    // Wakeup MPU-6050 device. PWR_MGMT_1 = 0.
     // 
     await i2c1.getWriteProc(0x68, 0x6b, 0).run();
 
+    //
+    // Wakeup ADXL345 device. POWER_CTL = 8.
+    //
     await i2c1.getWriteProc(0x53, 0x2d, 8).run();
 
-    const d = i2c1.getReadProc6(0x68, 0x43);
+    //
+    // GYRO_XOUT_H = 0x43. Base address of 6-byte transfer.
+    //
+    const mpu6050 = i2c1.getReadProc6(0x68, 0x43);
 
-    const m = i2c1.getReadProc6(0x53, 0x32);
-
-    const conv2 = (hi, lo) => {
-        const word = (hi << 8) | lo;
-        const abs = (word << 16) >> 16;
-        return abs;
-    }
+    //
+    // DATAX0 = 0x32. Base address of 6-byte transfer.
+    //
+    const adxl345 = i2c1.getReadProc6(0x53, 0x32);
 
     const conv = (lo, hi) => {
         const word = (hi << 8) | lo;
@@ -364,6 +376,7 @@ const util = require('util');
         return abs;
     }
 
+    /*    
     //
     // Get batch command to read register 0x41. The register hold higher part
     // of 2-byte temperature data. Since low part holds only 256/340th part of
@@ -372,7 +385,6 @@ const util = require('util');
     //
     const getTemperature = i2c1.getReadProc(0x68, 0x41);
     
-    /*
     async function readSensor() {
         const raw = await getTemperature.run();
         const t = ((((raw << 24) >> 24) * 256) / 340) + 36.5;
@@ -382,14 +394,14 @@ const util = require('util');
     */
 
    async function readSensor() {
-        const raw = await m.run();
-        const rrr = await d.run();
-        const x = conv(raw[0], raw[1]) / 256;
-        const y = conv(raw[2], raw[3]) / 256;
-        const z = conv(raw[4], raw[5]) / 256;
+        const accel = await adxl345.run();
+        const gyro = await mpu6050.run();
+        const x = conv(accel[0], accel[1]) / 256;
+        const y = conv(accel[2], accel[3]) / 256;
+        const z = conv(accel[4], accel[5]) / 256;
         const a = Math.sqrt((x*x + y*y + z*z));
         console.log('acc = ', a.toFixed(3));
-        console.log('gyro = %d %d %d', conv2(rrr[0], rrr[1]), conv2(rrr[2], rrr[3]), conv2(rrr[4], rrr[5]))
+        console.log('gyro = %d %d %d', conv(gyro[1], gyro[0]), conv(gyro[3], gyro[2]), conv(gyro[5], gyro[4]))
         setTimeout(readSensor, 500);
     }
 
