@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+    <head>
+    </head>
+    <body>  
+    <h1>Color player</h1>
+    <div>
+        <label id="note">...</label>
+    </div>
+    <div>
+        <button id="test">Test</button>
+    </div>
+    <audio id="note0" src="wav/0.wav" type="audio/wav">
+    <audio id="note1" src="wav/1.wav" type="audio/wav">
+    <audio id="note2" src="wav/2.wav" type="audio/wav">
+    <audio id="note3" src="wav/3.wav" type="audio/wav">
+    <audio id="note4" src="wav/4.wav" type="audio/wav">
+    <audio id="note5" src="wav/5.wav" type="audio/wav">
+    <audio id="note6" src="wav/6.wav" type="audio/wav">
+    <script>
+        var glob = null;
+        
+        document.querySelector('#test').addEventListener('click', function() {
+            var note = document.getElementById('note0');
+            note.play();
+        }); 
+
+        const ws = new WebSocket('ws://localhost:8080');
+
+        ws.onopen = function() {
+            document.getElementById('note').innerHTML = 'connected';
+        };
+
+        ws.onmessage = function(msg) {
+            const val = msg.data;
+            if (val >= 0 && val < 7) {
+                document.getElementById('note').innerHTML = val.toString();
+                if (glob != null) {
+                    glob.pause();
+                    glob.currentTime = 0;
+                    glob = null;
+                }
+
+                var x = document.getElementById('note'.concat(val.toString()));
+                glob = x;
+                glob.play();
+            }
+        };
+    </script>  
+  </body>
+</html>
+
