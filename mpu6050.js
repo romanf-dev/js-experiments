@@ -1,13 +1,9 @@
 //
 // Example project for MCU_keyhole + NodeJS.
 //
-// It reads data from two sensors MPU-6050 and ADXL345 with both connected
-// via the same I2C1 interface of STM32 Bluepill board.
-// Gyroscope data are read from MPU-6050, 
-// acceleration data are read from ADXL345.
+// It reads data from MPU-6050 via the I2C1 interface of STM32 Bluepill board.
 // I2C bus uses pin PB6 as SCL, pin PB7 as SDA with pull-up 10k resistors.
 // MPU-6050 has AD0 -> GND, thus its I2C addr = 0x68.
-// ADXL345 has addr 0x53.
 // Run as: node i2c.js <path to serial device>
 // Example: node i2c.js /dev/ttyACM0
 //
@@ -356,19 +352,9 @@ const util = require('util');
     await i2c1.getWriteProc(0x68, 0x6b, 0).run();
 
     //
-    // Wakeup ADXL345 device. POWER_CTL = 8.
-    //
-    await i2c1.getWriteProc(0x53, 0x2d, 8).run();
-
-    //
     // GYRO_XOUT_H = 0x43. Base address of 6-byte transfer.
     //
     const mpu6050 = i2c1.getReadProc6(0x68, 0x43);
-
-    //
-    // DATAX0 = 0x32. Base address of 6-byte transfer.
-    //
-    const adxl345 = i2c1.getReadProc6(0x53, 0x32);
 
     const conv = (lo, hi) => {
         const word = (hi << 8) | lo;
@@ -376,7 +362,6 @@ const util = require('util');
         return abs;
     }
 
-    /*    
     //
     // Get batch command to read register 0x41. The register hold higher part
     // of 2-byte temperature data. Since low part holds only 256/340th part of
@@ -386,21 +371,14 @@ const util = require('util');
     const getTemperature = i2c1.getReadProc(0x68, 0x41);
     
     async function readSensor() {
+        setTimeout(readSensor, 1000);
+   }
+
+   async function readSensor() {
         const raw = await getTemperature.run();
         const t = ((((raw << 24) >> 24) * 256) / 340) + 36.5;
         console.log('t = ', t.toFixed(2));
-        setTimeout(readSensor, 1000);
-    }
-    */
-
-   async function readSensor() {
-        const accel = await adxl345.run();
         const gyro = await mpu6050.run();
-        const x = conv(accel[0], accel[1]) / 256;
-        const y = conv(accel[2], accel[3]) / 256;
-        const z = conv(accel[4], accel[5]) / 256;
-        const a = Math.sqrt((x*x + y*y + z*z));
-        console.log('acc = ', a.toFixed(3));
         console.log('gyro = %d %d %d', conv(gyro[1], gyro[0]), conv(gyro[3], gyro[2]), conv(gyro[5], gyro[4]))
         setTimeout(readSensor, 500);
     }

@@ -17,10 +17,16 @@ The client part (should be started after the server) receives note ids and plays
 WAV-files are generated using audiosynth.js library.
 
 
-gy33-i2c.js
------------
+adxl345.js
+----------
 
-Example of reading from GY33 color sensor using I2C.
+Example of reading from ADXL345 using SPI.
+
+
+mpu6050.js
+----------
+
+Example of reading from MPU6050 using I2C.
 
 
 sensor.js
@@ -38,12 +44,6 @@ Run as:
 Example: 
 
     node sensor.js /dev/ttyACM0
-
-
-i2c.js
-------
-
-Reading data from two sensors (MPU-6050 and ADXL345) connected to the same I2C bus.
 
 
 wiki-nightmode.js
