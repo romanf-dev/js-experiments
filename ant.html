@@ -6,7 +6,7 @@
     <div>
         <button id="start">Start</button>
     </div>
-    <canvas id="field" width="1200" height="800" style="border:1px solid #000000;"></canvas>
+    <canvas id="field" width="1000" height="800" style="border:1px solid #000000;"></canvas>
     <script>
         const log2TileSize = 3; // log2(pixels on single side of the tile).
         const stepPeriod = 25;  // milliseconds between field updates.
@@ -33,7 +33,7 @@
             
             state[tileY * fieldWidth + tileX] = 1;
             context.fillStyle = "#000000";
-            context.fillRect (pixelX, pixelY, tileSize, tileSize);            
+            context.fillRect (tileX << log2TileSize, tileY << log2TileSize, tileSize, tileSize);
         });
 
         function step() {
