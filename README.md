@@ -2,6 +2,18 @@ JavaScript micro-projects
 =========================
 
 
+adxl345.js
+----------
+
+Example of reading from ADXL345 using SPI.
+
+
+ant.html
+--------
+
+Langton's ant implementation.
+
+
 audio.html
 ----------
 
@@ -15,12 +27,6 @@ Using GY33 color sensor to play audio. The sensor should be attached using USB-t
 sensor for color recognition, it interprets color changes as piano key presses and streams musical note ids via websocket interface.
 The client part (should be started after the server) receives note ids and plays audio using pre-generated wav files.
 WAV-files are generated using audiosynth.js library.
-
-
-adxl345.js
-----------
-
-Example of reading from ADXL345 using SPI.
 
 
 mpu6050.js
@@ -41,10 +47,6 @@ Run as:
 
     node sensor.js <path to serial device>
 
-Example: 
-
-    node sensor.js /dev/ttyACM0
-
 
 wiki-nightmode.js
 -----------------
@@ -57,8 +59,8 @@ Official wikipedia app for iPhone/iPad does not support night mode, it is my att
 Now you can use the shortcut on Wikipedia pages to switch the page to night mode (gray background, white text).
 
 
-ws_client/server
-----------------
+ws_client/server.js
+-------------------
 
 Websocket example: client requests data from the server then draws received value on a chart.
 No error handling is performed, this is just an example.
