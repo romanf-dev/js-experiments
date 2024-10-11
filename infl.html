@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>  
+    <h1>Inflation calculator</h1>
+    <input id="ratio"> average annual inflation (%)</input>
+    <br><br>
+    <input id="period"> period (years)</input>
+    <br><br>
+    <input id="monthly"> monthly expenses (in current prices, $)</input>
+    <br><br>
+    <input id="total"> total money needed ($)</input>
+    <br><br>
+    <div>
+        <br><button id="calc">Calc</button>
+    </div>
+    <script>
+        var button = document.getElementById("calc");
+        var ratio = document.getElementById("ratio");
+        var period = document.getElementById("period");
+        var monthly = document.getElementById("monthly");
+        var total = document.getElementById("total");
+
+        button.addEventListener('click', () => {
+            if (ratio.value == "" || period.value == "") {
+                alert("please, enter ratio, period");
+                return;
+            }
+            let r = 1 - ratio.value / 100;
+            if (monthly.value == "" && total.value != "") {
+                let point = (Math.pow(r, period.value) - 1) / Math.log(r);
+                let factor = point / period.value;
+                let quotient = total.value / (period.value * 12);
+                monthly.value = quotient * factor;
+            } else if (total.value == "" && monthly.value != "") {
+                let multipler = (1 - Math.pow(r, -period.value)) / Math.log(r);
+                total.value = multipler * monthly.value * 12;
+            } else {
+                alert("please, clear the field you're interested in");
+            }
+        });
+    </script>
+  </body>
+</html>
+
