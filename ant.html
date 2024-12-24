@@ -5,6 +5,7 @@
     <h1>Langton's Ant</h1>
     <div>
         <button id="start">Start</button>
+        <label id="counter">0</label>
     </div>
     <canvas id="field" width="1000" height="800" style="border:1px solid #000000;"></canvas>
     <script>
@@ -12,15 +13,16 @@
         const stepPeriod = 25;  // milliseconds between field updates.
         var canvas = document.getElementById("field");
         var button = document.getElementById("start");
+        var counter = document.getElementById("counter");
         var context = canvas.getContext("2d");
         const tileSize = 1 << log2TileSize;
         const fieldWidth = Math.floor(canvas.width / tileSize);
         const fieldHeight = Math.floor(canvas.height / tileSize);
         var antX = Math.floor(fieldWidth / 2);
         var antY = Math.floor(fieldHeight / 2);
-        var dir = 0;    
+        var dir = 0;
+        var step_counter = 0;
         var state = new Uint8Array(fieldWidth * fieldHeight);
-        const dirTable = [ [1,2,3,0], [3,0,1,2] ]; // 0 up, 1 left, 2 down, 3 right
         
         state.fill(0);  // 0 - white tile, 1 - black tile.
 
@@ -41,16 +43,17 @@
             const pixelY = antY << log2TileSize;
             const index = antY * fieldWidth + antX;
             
-            dir = dirTable[state[index]][dir];
+            dir = (state[index] ? dir - 1 : dir + 1) & 3; // magic
             state[index] ^= 1;
             context.fillStyle = (state[index] == 1) ? "#000000" : "#ffffff";
             context.fillRect (pixelX, pixelY, tileSize, tileSize);
+            counter.innerHTML = (++step_counter).toString();
             
             switch (dir) {
-                case 0: antY--; break;
-                case 1: antX++; break;
-                case 2: antY++; break;
-                case 3: antX--; break;
+                case 0: antY--; break; // up
+                case 1: antX++; break; // right
+                case 2: antY++; break; // down
+                case 3: antX--; break; // left
             }
             
             if (antX >= 0 && antX < fieldWidth && antY >= 0 && antY < fieldHeight) {
