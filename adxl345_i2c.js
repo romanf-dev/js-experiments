@@ -80,20 +80,6 @@ const util = require('util');
         await write(addr, value & ~bits);        
     }   
 
-    function widthModifier(size) {
-        let modifier = '';
-
-        if (size != undefined) {
-            const map = { 1: 'b', 2: 'w', 4: 'd' };
-            modifier = map[size];
-            if (modifier == undefined) {
-                throw new Error('Unknown width modifier')
-            }
-        }
-
-        return modifier;
-    }
-
     class Batch {
         constructor() {
             this.chain = new Array(50);
@@ -102,11 +88,11 @@ const util = require('util');
             this.cache = undefined;
         }
 
-        wait(addr, bit, value, width) {
+        wait(addr, bit, value, width = '') {
             const wait_id = ((value & 1) << 5) | (bit & 0x1f);
             const cmd = util.format(
                 'u%s %s %s', 
-                widthModifier(width), 
+                width, 
                 addr.toString(16), 
                 wait_id.toString(16)
             );
@@ -114,25 +100,19 @@ const util = require('util');
             return this;
         }
 
-        read(addr, width) {
-            const cmd = util.format(
-                'r%s %s', 
-                widthModifier(width), 
-                addr.toString(16)
-            );
-
+        read(addr, width = '') {
+            const cmd = util.format('r%s %s', width, addr.toString(16));
             this.chain[this.index++] = cmd;
             return this;
         }
 
-        write(addr, value, width) {
+        write(addr, value, width = '') {
             const cmd = util.format(
                 'w%s %s %s', 
-                widthModifier(width), 
+                width, 
                 addr.toString(16), 
                 value.toString(16)
             );
-
             this.chain[this.index++] = cmd;
             return this;
         }
@@ -142,30 +122,27 @@ const util = require('util');
             return this;
         }
 
-        get() {
-            if (this.index == 0) {
-                throw new Error('Empty batch');
+        repeat(n, func) {
+            for (let i = 0; i < n; ++i) {
+                func(this);
             }
-
-            return this.chain.slice(0, this.index).join('|') + '\n';
+            
+            return this;
         }
 
         async run() {
             if (this.cache == undefined) {
-                this.cache = this.get();
+                this.cache = this.chain.slice(0, this.index).join('|') + '\n';
             }
 
             const resp = await response(this.cache);  
-            const result = resp.toString().split('|').map((x) => { 
-                return parseInt(x, 16) 
-            });
-
+            const result = resp.toString().split('|');
             const translated = this.resultCommand.map((x) => {
-                return result[x];
+                return parseInt(result[x], 16);
             });
 
             return translated.length == 1 ? translated[0] : translated;
-        }         
+        }          
     }
 
     class RCC {
@@ -200,7 +177,7 @@ const util = require('util');
             await bitSet(i2c1.cr1, 1);
         }
 
-        getReadProc(deviceId, reg) {
+        readByte(deviceId, reg) {
             const addr = deviceId << 1;
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
@@ -222,11 +199,10 @@ const util = require('util');
                 .wait(this.sr1, 6, 1)               // Wait for RxNE
                 .read(this.dr).setAsResult()        // Read DR (set as batch result)
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
 
-        getReadProc6(deviceId, reg) {
+        readBytes(deviceId, reg, n) {
             const addr = deviceId << 1;
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
@@ -244,26 +220,19 @@ const util = require('util');
                 .read(this.sr1)                     // Read SR1
                 .read(this.sr2)                     // and SR2 to clear status bits
                 .write(this.cr1, (1 << 10) | 1)     // Set ACK
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()        // Read DR (set as batch result)
+                .repeat(n - 1, (b) => {
+                    b.wait(this.sr1, 6, 1)          // Wait for RxNE
+                    b.read(this.dr).setAsResult()
+                })
                 .write(this.cr1, 1)                 // Clear ACK
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
                 .wait(this.sr1, 6, 1)               // Wait for RxNE
                 .read(this.dr).setAsResult()        // Read last byte
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
 
-        getWriteProc(deviceId, reg, val) {
+        writeByte(deviceId, reg, val) {
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
                 .wait(this.sr1, 0, 1)               // Wait for SB
@@ -277,7 +246,6 @@ const util = require('util');
                 .write(this.dr, val)                // Send register value
                 .wait(this.sr1, 7, 1)               // Wait until sent
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
     }
@@ -316,11 +284,12 @@ const util = require('util');
     // PCLK1 = 36
     //
     await i2c1.setup(178, 36, 36);
+    const adxl345addr = 0x53;
 
     //
-    // Read device ID (whoami register at 0x75). It should be 0x68.
+    // Read device ID (whoami register at 0). It should be 0xe5.
     //
-    const id = await i2c1.getReadProc(0x53, 0).run();
+    const id = await i2c1.readByte(adxl345addr, 0).run();
     console.log('device id = ', id);
 
     if (id != 0xe5) {
@@ -331,12 +300,12 @@ const util = require('util');
     //
     // Wakeup device, set bit 3 at 0x2d register.
     //
-    await i2c1.getWriteProc(0x53, 0x2d, 8).run();
+    await i2c1.writeByte(adxl345addr, 0x2d, 8).run();
 
     //
     // Get procedure for 6-byte transfer, but don't run it.
     //
-    const adxl345 = i2c1.getReadProc6(0x53, 0x32);
+    const adxl345 = i2c1.readBytes(adxl345addr, 0x32, 6);
 
     const conv = (lo, hi) => {
         const word = (hi << 8) | lo;
@@ -354,7 +323,6 @@ const util = require('util');
     }
 
     readSensor();
-
 })().catch(err => { 
     console.log('Something goes wrong :(');
     console.log(err);

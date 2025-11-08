@@ -3,7 +3,7 @@
 //
 // It reads data from MPU-6050 via the I2C1 interface of STM32 Bluepill board.
 // I2C bus uses pin PB6 as SCL, pin PB7 as SDA with pull-up 10k resistors.
-// MPU-6050 has AD0 -> GND, thus its I2C addr = 0x68.
+// MPU-6050 has AD0 -> GND, thus its I2C addr = mpu6050addr.
 // Run as: node i2c.js <path to serial device>
 // Example: node i2c.js /dev/ttyACM0
 //
@@ -89,29 +89,6 @@ const util = require('util');
         await write(addr, value & ~bits);        
     }   
 
-    function widthModifier(size) {
-        let modifier = '';
-
-        if (size != undefined) {
-            const map = { 1: 'b', 2: 'w', 4: 'd' };
-            modifier = map[size];
-            if (modifier == undefined) {
-                throw new Error('Unknown width modifier')
-            }
-        }
-
-        return modifier;
-    }
-
-    //
-    // Batch describes a sequence of commands which is loaded to a MCU and
-    // then executed sequentially without USB overhead. This is necessary for
-    // protocols like I2C which is heavily depends on timings. When timing does
-    // not matter then usual approach with synchronous reads/writes is 
-    // recommended. Note that maximum size of the batch is limited to by
-    // internal buffers of a MCU, so it must be reasonable, no more than 50
-    // commands.
-    //
     class Batch {
         constructor() {
             this.chain = new Array(50);
@@ -120,11 +97,11 @@ const util = require('util');
             this.cache = undefined;
         }
 
-        wait(addr, bit, value, width) {
+        wait(addr, bit, value, width = '') {
             const wait_id = ((value & 1) << 5) | (bit & 0x1f);
             const cmd = util.format(
                 'u%s %s %s', 
-                widthModifier(width), 
+                width, 
                 addr.toString(16), 
                 wait_id.toString(16)
             );
@@ -132,25 +109,19 @@ const util = require('util');
             return this;
         }
 
-        read(addr, width) {
-            const cmd = util.format(
-                'r%s %s', 
-                widthModifier(width), 
-                addr.toString(16)
-            );
-
+        read(addr, width = '') {
+            const cmd = util.format('r%s %s', width, addr.toString(16));
             this.chain[this.index++] = cmd;
             return this;
         }
 
-        write(addr, value, width) {
+        write(addr, value, width = '') {
             const cmd = util.format(
                 'w%s %s %s', 
-                widthModifier(width), 
+                width, 
                 addr.toString(16), 
                 value.toString(16)
             );
-
             this.chain[this.index++] = cmd;
             return this;
         }
@@ -160,30 +131,27 @@ const util = require('util');
             return this;
         }
 
-        get() {
-            if (this.index == 0) {
-                throw new Error('Empty batch');
+        repeat(n, func) {
+            for (let i = 0; i < n; ++i) {
+                func(this);
             }
-
-            return this.chain.slice(0, this.index).join('|') + '\n';
+            
+            return this;
         }
 
         async run() {
             if (this.cache == undefined) {
-                this.cache = this.get();
+                this.cache = this.chain.slice(0, this.index).join('|') + '\n';
             }
 
             const resp = await response(this.cache);  
-            const result = resp.toString().split('|').map((x) => { 
-                return parseInt(x, 16) 
-            });
-
+            const result = resp.toString().split('|');
             const translated = this.resultCommand.map((x) => {
-                return result[x];
+                return parseInt(result[x], 16);
             });
 
             return translated.length == 1 ? translated[0] : translated;
-        }         
+        }          
     }
 
     class RCC {
@@ -218,7 +186,7 @@ const util = require('util');
             await bitSet(i2c1.cr1, 1);
         }
 
-        getReadProc(deviceId, reg) {
+        readByte(deviceId, reg) {
             const addr = deviceId << 1;
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
@@ -240,11 +208,10 @@ const util = require('util');
                 .wait(this.sr1, 6, 1)               // Wait for RxNE
                 .read(this.dr).setAsResult()        // Read DR (set as batch result)
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
 
-        getReadProc6(deviceId, reg) {
+        readBytes(deviceId, reg, n) {
             const addr = deviceId << 1;
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
@@ -262,26 +229,19 @@ const util = require('util');
                 .read(this.sr1)                     // Read SR1
                 .read(this.sr2)                     // and SR2 to clear status bits
                 .write(this.cr1, (1 << 10) | 1)     // Set ACK
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()
-                .wait(this.sr1, 6, 1)               // Wait for RxNE
-                .read(this.dr).setAsResult()        // Read DR (set as batch result)
+                .repeat(n - 1, (b) => {
+                    b.wait(this.sr1, 6, 1)          // Wait for RxNE
+                    b.read(this.dr).setAsResult()
+                })
                 .write(this.cr1, 1)                 // Clear ACK
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
                 .wait(this.sr1, 6, 1)               // Wait for RxNE
                 .read(this.dr).setAsResult()        // Read last byte
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
 
-        getWriteProc(deviceId, reg, val) {
+        writeByte(deviceId, reg, val) {
             const batch = new Batch()
                 .write(this.cr1, (1 << 8) | 1)      // Generate START
                 .wait(this.sr1, 0, 1)               // Wait for SB
@@ -295,7 +255,6 @@ const util = require('util');
                 .write(this.dr, val)                // Send register value
                 .wait(this.sr1, 7, 1)               // Wait until sent
                 .write(this.cr1, (1 << 9) | 1)      // Generate STOP
-
             return batch;
         }
     }
@@ -334,11 +293,12 @@ const util = require('util');
     // PCLK1 = 36
     //
     await i2c1.setup(178, 36, 36);
+    const mpu6050addr = 0x68;
 
     //
     // Read device ID (whoami register at 0x75). It should be 0x68.
     //
-    const id = await i2c1.getReadProc(0x68, 0x75).run();
+    const id = await i2c1.readByte(mpu6050addr, 0x75).run();
     console.log('device id = ', id);
 
     if (id != 104) {
@@ -349,42 +309,35 @@ const util = require('util');
     //
     // Wakeup MPU-6050 device. PWR_MGMT_1 = 0.
     // 
-    await i2c1.getWriteProc(0x68, 0x6b, 0).run();
+    await i2c1.writeByte(mpu6050addr, 0x6b, 0).run();
 
-    //
-    // GYRO_XOUT_H = 0x43. Base address of 6-byte transfer.
-    //
-    const mpu6050 = i2c1.getReadProc6(0x68, 0x43);
-
-    const conv = (lo, hi) => {
-        const word = (hi << 8) | lo;
-        const abs = (word << 16) >> 16;
-        return abs;
+    const gyro = i2c1.readBytes(mpu6050addr, 0x43, 6);
+    const accel = i2c1.readBytes(mpu6050addr, 0x3b, 6);
+    const temp = i2c1.readBytes(mpu6050addr, 0x41, 2);
+    const conv = (hi, lo) => { 
+        const short = (hi << 8) | lo;
+        return (short & 0x8000) ? short - 0x10000 : short;
     }
 
-    //
-    // Get batch command to read register 0x41. The register hold higher part
-    // of 2-byte temperature data. Since low part holds only 256/340th part of
-    // the data (less than 1 degree) it may be ignored since high accuracy is
-    // not required.
-    //
-    const getTemperature = i2c1.getReadProc(0x68, 0x41);
-    
     async function readSensor() {
-        setTimeout(readSensor, 1000);
-   }
-
-   async function readSensor() {
-        const raw = await getTemperature.run();
-        const t = ((((raw << 24) >> 24) * 256) / 340) + 36.5;
+        const tempBytes = await temp.run();
+        const gyroBytes = await gyro.run();
+        const accelBytes = await accel.run();
+        const rawTemp = conv(tempBytes[0], tempBytes[1]);
+        const t = (rawTemp / 340) + 36.53;
+        const gyroX = conv(gyroBytes[0], gyroBytes[1]);
+        const gyroY = conv(gyroBytes[2], gyroBytes[3]);
+        const gyroZ = conv(gyroBytes[4], gyroBytes[5]);
+        const accX = conv(accelBytes[0], accelBytes[1]);
+        const accY = conv(accelBytes[2], accelBytes[3]);
+        const accZ = conv(accelBytes[4], accelBytes[5]);
         console.log('t = ', t.toFixed(2));
-        const gyro = await mpu6050.run();
-        console.log('gyro = %d %d %d', conv(gyro[1], gyro[0]), conv(gyro[3], gyro[2]), conv(gyro[5], gyro[4]))
+        console.log('gyro = %d %d %d', gyroX, gyroY, gyroZ);
+        console.log('accel = %d %d %d', accX, accY, accZ);
         setTimeout(readSensor, 500);
     }
 
     readSensor();
-
 })().catch(err => { 
     console.log('Something goes wrong :(');
     console.log(err);
