@@ -1,9 +1,12 @@
-
+//
+// This example uses ADXL345 sensor connected to I2C1 on STM32 Bluepill board.
+// SCL -> PB6, SDA -> PB7, SD0 -> GND, CS -> VCC, pullup resistors are 10k.
+// Run as: node adxl345_i2c.js /dev/ttyACM0
+//
 const { SerialPort } = require('serialport');
 const util = require('util'); 
 
 (async function main() {
-
     if (process.argv.length === 2) {
         console.error('Please specify serial port name!');
         process.exit(1);
@@ -62,11 +65,8 @@ const util = require('util');
         const req = util.format('r %s\n', addr.toString(16));
         const str = await response(req);
         const num = parseInt(str, 16);
-
-        if (isNaN(num)) {
+        if (isNaN(num))
             throw new Error('Response parser error');
-        }
-
         return num;
     }
 
@@ -123,24 +123,18 @@ const util = require('util');
         }
 
         repeat(n, func) {
-            for (let i = 0; i < n; ++i) {
+            for (let i = 0; i < n; ++i)
                 func(this);
-            }
-            
             return this;
         }
 
         async run() {
-            if (this.cache == undefined) {
+            if (this.cache == undefined)
                 this.cache = this.chain.slice(0, this.index).join('|') + '\n';
-            }
 
             const resp = await response(this.cache);  
             const result = resp.toString().split('|');
-            const translated = this.resultCommand.map((x) => {
-                return parseInt(result[x], 16);
-            });
-
+            const translated = this.resultCommand.map((x) => parseInt(result[x], 16));
             return translated.length == 1 ? translated[0] : translated;
         }          
     }

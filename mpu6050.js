@@ -3,16 +3,14 @@
 //
 // It reads data from MPU-6050 via the I2C1 interface of STM32 Bluepill board.
 // I2C bus uses pin PB6 as SCL, pin PB7 as SDA with pull-up 10k resistors.
-// MPU-6050 has AD0 -> GND, thus its I2C addr = mpu6050addr.
-// Run as: node i2c.js <path to serial device>
-// Example: node i2c.js /dev/ttyACM0
+// MPU-6050 has AD0 -> GND, thus its I2C addr = 0x68.
+// Run as: node mpu6050.js <path to serial device>
+// Example: node mpu6050.js /dev/ttyACM0
 //
-
 const { SerialPort } = require('serialport');
 const util = require('util'); 
 
 (async function main() {
-
     if (process.argv.length === 2) {
         console.error('Please specify serial port name!');
         process.exit(1);
@@ -63,7 +61,6 @@ const util = require('util');
             addr.toString(16), 
             (data >>> 0).toString(16)
         );
-
         await response(req);
     }
 
@@ -71,11 +68,8 @@ const util = require('util');
         const req = util.format('r %s\n', addr.toString(16));
         const str = await response(req);
         const num = parseInt(str, 16);
-
-        if (isNaN(num)) {
+        if (isNaN(num))
             throw new Error('Response parser error');
-        }
-
         return num;
     }
 
@@ -132,48 +126,41 @@ const util = require('util');
         }
 
         repeat(n, func) {
-            for (let i = 0; i < n; ++i) {
+            for (let i = 0; i < n; ++i)
                 func(this);
-            }
-            
             return this;
         }
 
         async run() {
-            if (this.cache == undefined) {
+            if (this.cache == undefined)
                 this.cache = this.chain.slice(0, this.index).join('|') + '\n';
-            }
-
             const resp = await response(this.cache);  
             const result = resp.toString().split('|');
-            const translated = this.resultCommand.map((x) => {
-                return parseInt(result[x], 16);
-            });
-
+            const translated = this.resultCommand.map((x) => parseInt(result[x], 16));
             return translated.length == 1 ? translated[0] : translated;
         }          
     }
 
     class RCC {
         constructor(baseaddr) {
-            this.ahbenr = baseaddr + 0x14;
-            this.apb2enr = baseaddr + 0x18;
-            this.apb1enr = baseaddr + 0x1c;
-            this.cfgr = baseaddr + 0x04;
+            this.ahbenr     = baseaddr + 0x14;
+            this.apb2enr    = baseaddr + 0x18;
+            this.apb1enr    = baseaddr + 0x1c;
+            this.cfgr       = baseaddr + 0x04;
         }
     }
   
     class I2C {
         constructor(baseaddr) {
-            this.cr1 = baseaddr + 0x00;
-            this.cr2 = baseaddr + 0x04;
-            this.oar1 = baseaddr + 0x08;
-            this.oar2 = baseaddr + 0x0c;
-            this.dr = baseaddr + 0x10;
-            this.sr1 = baseaddr + 0x14;
-            this.sr2 = baseaddr + 0x18;
-            this.ccr = baseaddr + 0x1c;
-            this.trise = baseaddr + 0x20;
+            this.cr1    = baseaddr + 0x00;
+            this.cr2    = baseaddr + 0x04;
+            this.oar1   = baseaddr + 0x08;
+            this.oar2   = baseaddr + 0x0c;
+            this.dr     = baseaddr + 0x10;
+            this.sr1    = baseaddr + 0x14;
+            this.sr2    = baseaddr + 0x18;
+            this.ccr    = baseaddr + 0x1c;
+            this.trise  = baseaddr + 0x20;
         }
         
         async setup(ccr, trise, pclk) {
